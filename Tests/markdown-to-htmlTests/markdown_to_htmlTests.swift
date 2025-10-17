@@ -38,4 +38,28 @@ final class MarkdownConverterTests: XCTestCase {
         let expected = "<p>&lt;script&gt;alert('xss')&lt;/script&gt;</p>"
         XCTAssertEqual(converter.convert(markdown), expected)
     }
+
+    func testOrderedListConversion() {
+        let markdown = "1. First\n2. Second"
+        let expected = "<ol>\n<li>First</li>\n<li>Second</li>\n</ol>"
+        XCTAssertEqual(converter.convert(markdown), expected)
+    }
+
+    func testIgnoresHTMLComments() {
+        let markdown = "# Heading\n<!-- comment -->\nContent"
+        let expected = "<h1>Heading</h1>\n<p>Content</p>"
+        XCTAssertEqual(converter.convert(markdown), expected)
+    }
+
+    func testImageAndLinkRendering() {
+        let markdown = "![Alt](image.png) and [Link](https://example.com)"
+        let expected = "<p><img src=\"image.png\" alt=\"Alt\" /> and <a href=\"https://example.com\">Link</a></p>"
+        XCTAssertEqual(converter.convert(markdown), expected)
+    }
+
+    func testTaskListItems() {
+        let markdown = "- [x] Done\n- [ ] Pending"
+        let expected = "<ul>\n<li><label><input type=\"checkbox\" disabled checked> Done</label></li>\n<li><label><input type=\"checkbox\" disabled> Pending</label></li>\n</ul>"
+        XCTAssertEqual(converter.convert(markdown), expected)
+    }
 }
