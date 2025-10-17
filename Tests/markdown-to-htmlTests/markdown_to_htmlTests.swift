@@ -1,5 +1,5 @@
 import XCTest
-@testable import markdown_to_html
+@testable import MarkdownToHTMLCore
 
 final class MarkdownConverterTests: XCTestCase {
     private var converter: MarkdownConverter!
