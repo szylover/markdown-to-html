@@ -5,9 +5,11 @@ import MarkdownToHTMLCore
 struct MarkdownToHTMLApp {
     static func main() {
         print("=== Markdown to HTML Converter ===")
-        print("Type your Markdown content below. Enter a single line with END to finish.\n")
 
-        let markdown = readMarkdownInput()
+        guard let markdown = obtainMarkdownFromUser() else {
+            print("No Markdown content provided. Exiting.")
+            return
+        }
 
         if markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             print("No Markdown content provided. Exiting.")
@@ -27,15 +29,120 @@ struct MarkdownToHTMLApp {
         }
     }
 
-    private static func readMarkdownInput() -> String {
-        var lines: [String] = []
-        while let line = readLine() {
-            if line == "END" {
-                break
-            }
-            lines.append(line)
+    private static func obtainMarkdownFromUser() -> String? {
+        if let markdown = promptForMarkdownThroughGUI() {
+            return markdown
         }
-        return lines.joined(separator: "\n")
+
+        print("Unable to open a graphical input window. Paste your Markdown content below.")
+        print("Press Ctrl+D (Unix/macOS) or Ctrl+Z followed by Enter (Windows Subsystem for Linux) when finished.\n")
+
+        guard let data = try? FileHandle.standardInput.readToEnd() else {
+            return nil
+        }
+
+        guard let markdown = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        return markdown
+    }
+
+    private static func promptForMarkdownThroughGUI() -> String? {
+#if os(macOS)
+        return promptForMarkdownWithAppleScript()
+#else
+        return promptForMarkdownWithZenity()
+#endif
+    }
+
+#if os(macOS)
+    private static func promptForMarkdownWithAppleScript() -> String? {
+        guard let executable = findExecutable(named: "osascript") else {
+            return nil
+        }
+
+        let script = """
+        tell application "System Events"
+            activate
+            set dialogResult to display dialog "Enter Markdown content:" with title "Markdown Input" default answer "" buttons {"Cancel", "OK"} default button "OK"
+            return text returned of dialogResult
+        end tell
+        """
+
+        return runProcess(executablePath: executable, arguments: ["-e", script])
+    }
+#else
+    private static func promptForMarkdownWithZenity() -> String? {
+        guard let executable = findExecutable(named: "zenity") else {
+            return nil
+        }
+
+        return runProcess(
+            executablePath: executable,
+            arguments: [
+                "--text-info",
+                "--editable",
+                "--title=Markdown Input",
+                "--width=600",
+                "--height=400"
+            ]
+        )
+    }
+#endif
+
+    private static func runProcess(executablePath: String, arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            guard process.terminationStatus == 0 else {
+                return nil
+            }
+
+            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            guard var output = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+
+            while output.last?.isNewline == true {
+                output.removeLast()
+            }
+
+            return output
+        } catch {
+            return nil
+        }
+    }
+
+    private static func findExecutable(named name: String) -> String? {
+        let fileManager = FileManager.default
+        var searchDirectories: [String] = []
+
+        if let pathVariable = ProcessInfo.processInfo.environment["PATH"] {
+            searchDirectories.append(contentsOf: pathVariable.split(separator: ":").map(String.init))
+        }
+
+        searchDirectories.append(contentsOf: ["/usr/bin", "/usr/local/bin", "/bin", "/opt/homebrew/bin", "/opt/local/bin"])
+
+        var checked = Set<String>()
+
+        for directory in searchDirectories where checked.insert(directory).inserted {
+            let path = directory + "/" + name
+            if fileManager.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+
+        return nil
     }
 
     private static func wrapInHTMLDocument(_ bodyContent: String) -> String {
