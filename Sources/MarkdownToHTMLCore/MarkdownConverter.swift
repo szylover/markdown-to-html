@@ -206,7 +206,9 @@ public struct MarkdownConverter {
         let entities: [(character: String, entity: String)] = [
             ("&", "&amp;"),
             ("<", "&lt;"),
-            (">", "&gt;")
+            (">", "&gt;"),
+            ("\"", "&quot;"),
+            ("'", "&#39;")
         ]
         for (character, entity) in entities {
             escaped = escaped.replacingOccurrences(of: character, with: entity)
@@ -215,21 +217,15 @@ public struct MarkdownConverter {
     }
 
     private func applyInlineFormats(to text: String) -> String {
-        let imageRange = NSRange(text.startIndex..<text.endIndex, in: text)
-        let withImages = MarkdownConverter.imageRegex.stringByReplacingMatches(
-            in: text,
-            options: [],
-            range: imageRange,
-            withTemplate: "<img src=\"$2\" alt=\"$1\" />"
-        )
+        let withImages = replacingMatches(in: text, with: MarkdownConverter.imageRegex) { match, groups in
+            guard let url = safeURL(groups[1]) else { return match }
+            return "<img src=\"\(url)\" alt=\"\(groups[0])\" />"
+        }
 
-        let linkRange = NSRange(withImages.startIndex..<withImages.endIndex, in: withImages)
-        let withLinks = MarkdownConverter.linkRegex.stringByReplacingMatches(
-            in: withImages,
-            options: [],
-            range: linkRange,
-            withTemplate: "<a href=\"$2\">$1</a>"
-        )
+        let withLinks = replacingMatches(in: withImages, with: MarkdownConverter.linkRegex) { match, groups in
+            guard let url = safeURL(groups[1]) else { return match }
+            return "<a href=\"\(url)\">\(groups[0])</a>"
+        }
 
         let strongRange = NSRange(withLinks.startIndex..<withLinks.endIndex, in: withLinks)
         let boldApplied = MarkdownConverter.strongRegex.stringByReplacingMatches(
@@ -248,6 +244,40 @@ public struct MarkdownConverter {
         )
 
         return italicApplied
+    }
+
+    private func replacingMatches(
+        in text: String,
+        with regex: NSRegularExpression,
+        transform: (String, [String]) -> String
+    ) -> String {
+        var result = text
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+
+        for match in regex.matches(in: text, options: [], range: range).reversed() {
+            guard let matchRange = Range(match.range, in: result) else { continue }
+            let groups = (1..<match.numberOfRanges).compactMap { index -> String? in
+                guard let groupRange = Range(match.range(at: index), in: result) else { return nil }
+                return String(result[groupRange])
+            }
+            guard groups.count == match.numberOfRanges - 1 else { continue }
+            result.replaceSubrange(matchRange, with: transform(String(result[matchRange]), groups))
+        }
+
+        return result
+    }
+
+    private func safeURL(_ value: String) -> String? {
+        guard !value.isEmpty, value == value.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return nil
+        }
+        guard !value.hasPrefix("//") else { return nil }
+
+        let scheme = URLComponents(string: value)?.scheme?.lowercased()
+        guard scheme == nil || ["http", "https", "mailto"].contains(scheme) else {
+            return nil
+        }
+        return value
     }
 
     private static let strongRegex: NSRegularExpression = {

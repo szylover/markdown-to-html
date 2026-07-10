@@ -57,6 +57,12 @@ final class MarkdownConverterTests: XCTestCase {
         XCTAssertEqual(converter.convert(markdown), expected)
     }
 
+    func testEscapesAttributesAndRejectsUnsafeURLs() {
+        let markdown = "[<x>](javascript:alert(1)) ![\"alt\"](https://example.com/image.png)"
+        let expected = "<p>[&lt;x&gt;](javascript:alert(1)) <img src=\"https://example.com/image.png\" alt=\"&quot;alt&quot;\" /></p>"
+        XCTAssertEqual(converter.convert(markdown), expected)
+    }
+
     func testTaskListItems() {
         let markdown = "- [x] Done\n- [ ] Pending"
         let expected = "<ul>\n<li><label><input type=\"checkbox\" disabled checked> Done</label></li>\n<li><label><input type=\"checkbox\" disabled> Pending</label></li>\n</ul>"
